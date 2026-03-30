@@ -1,0 +1,52 @@
+# ==========================================
+# 1. BACKEND (PYTHON / FASTAPI / AI)
+# ==========================================
+# Bỏ qua các file biên dịch tự động của Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Bỏ qua môi trường ảo (Nặng và chỉ chạy trên máy cá nhân)
+.venv/
+venv/
+env/
+
+# Bỏ qua các file cấu hình bảo mật (CỰC KỲ QUAN TRỌNG)
+.env
+*.env
+.env.local
+
+# Bỏ qua thư mục chứa dữ liệu rác, file upload hoặc database cục bộ
+data/
+uploads/
+*.db
+*.sqlite3
+
+# ==========================================
+# 2. FRONTEND (REACT / VITE / NODEJS)
+# ==========================================
+# Bỏ qua thư mục thư viện (Cực kỳ nặng, khi kéo code về chỉ cần chạy npm install là có lại)
+node_modules/
+plagiarism-checker-frontend/node_modules/
+
+# Bỏ qua thư mục build (Sản phẩm sau khi đóng gói)
+dist/
+build/
+
+# Bỏ qua các file log lỗi của Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+# 3. HỆ ĐIỀU HÀNH & EDITOR (VS CODE)
+# ==========================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# 4. AI TOOLS & EXTENSIONS
+# ==========================================
+.sixth/
