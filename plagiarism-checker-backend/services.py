@@ -43,22 +43,34 @@ def chunk_text_sliding_window(text: str, window_size: int = 3, overlap: int = 1)
     return chunks
 def check_if_quote(text: str) -> bool:
     """
-    Hàm kiểm tra xem một đoạn văn (chunk) có phải là câu trích dẫn không.
-    Sử dụng Regex để tìm các nội dung nằm giữa ngoặc kép thẳng ("") hoặc cong (“”).
+    Kiểm tra đoạn văn có chứa dấu hiệu trích dẫn hay không bằng Regex.
+    Bắt 2 trường hợp: Có dấu ngoặc kép HOẶC có định dạng dẫn nguồn ở cuối đoạn.
     """
-    # Tìm tất cả các chuỗi nằm trong ngoặc kép
-    quotes = re.findall(r'["“](.*?)["”]', text)
+    # ---------------------------------------------------------
+    # TRƯỜNG HỢP 1: TÌM DẤU NGOẶC KÉP (Dành cho trích dẫn ngắn)
+    # ---------------------------------------------------------
+    # Hỗ trợ cả ngoặc kép tiếng Việt (“ ”) và tiếng Anh (" ")
+    # cờ re.DOTALL giúp Regex đọc xuyên qua cả các dấu xuống dòng (\n)
+    quote_pattern = r'["“](.*?)["”]'
+    has_quote_marks = bool(re.search(quote_pattern, text, flags=re.DOTALL))
     
-    # Nếu không có ngoặc kép nào
-    if not quotes:
-        return False
+    if has_quote_marks:
+        return True
         
-    # Tính tổng số ký tự nằm trong ngoặc kép
-    total_quote_length = sum(len(q) for q in quotes)
+    # ---------------------------------------------------------
+    # TRƯỜNG HỢP 2: TÌM KÝ HIỆU DẪN NGUỒN (Dành cho trích dẫn khối dài)
+    # ---------------------------------------------------------
+    # Chuẩn IEEE: Tìm cụm ngoặc vuông chứa số. VD: [1], [15], [4, tr.97]
+    ieee_pattern = r'\[\d+[^\]]*\]'
     
-    # Do chunk có thể bị dính thêm cụm từ như 'Theo tác giả Nguyễn Văn A: "..."'
-    # Nên nếu phần trong ngoặc kép chiếm hơn 40% độ dài đoạn, ta chốt nó là Trích dẫn!
-    if total_quote_length / len(text) > 0.4:
+    # Chuẩn APA/Harvard: Tìm cụm ngoặc đơn có chứa 4 chữ số liên tiếp (năm xuất bản)
+    # VD: (Tác giả, 2023), (Smith, 2020, tr.15)
+    apa_pattern = r'\([^)]*\d{4}[^)]*\)'
+    
+    # Đối với trích dẫn khối (không có ngoặc kép), nguồn thường nằm ở cuối đoạn.
+    # Ta cắt khoảng 80 ký tự cuối cùng của đoạn văn để rà soát.
+    tail_text = text[-80:]
+    if bool(re.search(ieee_pattern, tail_text)) or bool(re.search(apa_pattern, tail_text)):
         return True
         
     return False
