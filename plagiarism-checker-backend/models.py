@@ -40,6 +40,7 @@ class MatchDetail(Base):
     # =========================================================
     chunk_index = Column(Integer, nullable=False) # Lưu vị trí đoạn văn của sinh viên
     is_quote = Column(Boolean, default=False)     # Lưu cờ đánh dấu câu trích dẫn
+    is_reference = Column(Boolean, default=False) # Cờ đánh dấu đoạn này nằm trong Danh mục tài liệu tham khảo
     # =========================================================
 
     source_doc_id = Column(Integer, nullable=True)

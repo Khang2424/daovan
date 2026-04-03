@@ -11,7 +11,7 @@ export default function ScannerTab({
   
   // Lấy toàn bộ công cụ từ Hook ra dùng
   const { 
-    excludeQuotes, setExcludeQuotes, filteredMatches, 
+    excludeQuotes, setExcludeQuotes, excludeReferences, setExcludeReferences, filteredMatches, 
     plagiarizedCount, excludedCount, originalCount, plagiarizedPercent 
   } = useMatchFilter(scanResult?.matches || [], scanResult?.total_chunks_scanned || 0);
 
@@ -73,9 +73,15 @@ export default function ScannerTab({
                     <h3 className="text-xl font-bold text-gray-800 mb-2">Báo cáo kết quả quét</h3>
                     <p className="text-gray-500 mb-6">File: <span className="font-medium text-emerald-600">{scanResult.file_name}</span></p>
                     <div className="space-y-3">
-                        <label className="flex items-center gap-3">
-                            <input type="checkbox" className="w-5 h-5 text-emerald-600" />
-                            <span>Loại trừ tài liệu tham khảo (Sắp ra mắt)</span>
+                        {/* Checkbox Loại trừ Danh mục tài liệu tham khảo */}
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
+                                checked={excludeReferences}
+                                onChange={(e) => setExcludeReferences(e.target.checked)}
+                            />
+                            <span className="text-gray-700">Loại trừ Danh mục tài liệu tham khảo</span>
                         </label>
                         
                         {/* Checkbox kích hoạt bộ lọc */}

@@ -74,3 +74,19 @@ def check_if_quote(text: str) -> bool:
         return True
         
     return False
+
+def split_main_and_references(text: str):
+    """
+    Tìm kiếm tiêu đề "Tài liệu tham khảo" và cắt văn bản thành 2 phần: 
+    Phần nội dung chính và Phần danh mục tham khảo.
+    """
+    # Regex tìm các chữ như: "TÀI LIỆU THAM KHẢO", "DANH MỤC TÀI LIỆU THAM KHẢO", "REFERENCES"
+    # Hỗ trợ cả trường hợp có số la mã phía trước (VD: VI. TÀI LIỆU THAM KHẢO)
+    pattern = r'(?i)\n\s*(?:[IVX\d]+\.?\s*)?(?:DANH MỤC\s+)?TÀI LIỆU THAM KHẢO|REFERENCES|BIBLIOGRAPHY\s*\n'
+    
+    match = re.search(pattern, text)
+    if match:
+        ref_start = match.start()
+        return text[:ref_start], text[ref_start:] # Trả về (Nội dung chính, Phần tham khảo)
+    
+    return text, "" # Nếu không tìm thấy, coi như toàn bộ là nội dung chính

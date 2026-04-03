@@ -8,7 +8,7 @@ from database import get_db
 from models import User, ScanReport, MatchDetail
 from schemas import ScanRequest
 from auth import get_current_user
-from services import model, qdrant_client, extract_text_from_file, chunk_text_sliding_window, check_if_quote
+from services import model, qdrant_client, extract_text_from_file, chunk_text_sliding_window, check_if_quote, split_main_and_references
 
 # Khởi tạo Router
 router = APIRouter(prefix="/api/v1/scan", tags=["Scanner"])
@@ -46,22 +46,36 @@ async def scan_file_plagiarism(
         if not document_text:
             raise HTTPException(status_code=400, detail="File trống")
 
-        chunks = chunk_text_sliding_window(document_text, window_size=3, overlap=1)
+        # ========================================================
+        # [MỚI] 1. CẮT ĐUÔI VĂN BẢN VÀ BĂM (CHUNKING) RIÊNG BIỆT
+        # ========================================================
+        main_text, ref_text = split_main_and_references(document_text)
+        
+        main_chunks = chunk_text_sliding_window(main_text, window_size=3, overlap=1)
+        ref_chunks = chunk_text_sliding_window(ref_text, window_size=3, overlap=1) if ref_text else []
+        
+        # Gộp lại thành 1 mảng để quét, nhưng đánh dấu lại vị trí bắt đầu của phần tham khảo
+        all_chunks = main_chunks + ref_chunks
+        ref_start_chunk_index = len(main_chunks)
+
         all_matches = []
         
-        for index, chunk_text in enumerate(chunks):
+        for index, chunk_text in enumerate(all_chunks):
             chunk_segmented = word_tokenize(chunk_text, format="text")
             query_vector = model.encode(chunk_segmented)
             
-            # 1. ĐỔI LIMIT = 3 ĐỂ LẤY TOP 3 TÀI LIỆU GIỐNG NHẤT
+            # ĐỔI LIMIT = 3 ĐỂ LẤY TOP 3 TÀI LIỆU GIỐNG NHẤT
             search_response = qdrant_client.query_points(
                 collection_name="document_chunks", query=query_vector.tolist(), limit=3 
             )
             
-            # 2. KIỂM TRA TRÍCH DẪN
+            # KIỂM TRA TRÍCH DẪN
             is_quote_flag = check_if_quote(chunk_text)
             
-            # 3. Gom các nguồn giống vào mảng
+            # [MỚI] 2. KIỂM TRA XEM ĐOẠN NÀY CÓ NẰM TRONG DANH MỤC THAM KHẢO KHÔNG
+            is_reference_flag = index >= ref_start_chunk_index
+            
+            # Gom các nguồn giống vào mảng
             chunk_sources = []
             for point in search_response.points:
                 score = point.score
@@ -78,6 +92,7 @@ async def scan_file_plagiarism(
                     "chunk_index": index + 1,
                     "student_text": chunk_text,
                     "is_quote": is_quote_flag,
+                    "is_reference": is_reference_flag, # [MỚI] 3. Nhét cờ vào payload trả về
                     "sources": chunk_sources
                 })
 
@@ -89,7 +104,7 @@ async def scan_file_plagiarism(
         db.commit()
         db.refresh(new_report)
 
-        # 4. Lưu vào Database (Vòng lặp kép)
+        # Lưu vào Database (Vòng lặp kép)
         if all_matches:
             for match in all_matches:
                 for source in match["sources"]:
@@ -97,6 +112,7 @@ async def scan_file_plagiarism(
                         report_id=new_report.id, 
                         chunk_index=match["chunk_index"],
                         is_quote=match["is_quote"],
+                        is_reference=match["is_reference"], # [MỚI] 4. Lưu cờ này xuống Database
                         source_doc_id=source["source_doc_id"],
                         query_text=match["student_text"], 
                         matched_text=source["matched_text"],
@@ -108,7 +124,8 @@ async def scan_file_plagiarism(
 
         return {
             "status": "success", "report_id": new_report.id, "user_email": current_user.email,
-            "file_name": file.filename, "total_chunks_scanned": len(chunks),
+            "file_name": file.filename, 
+            "total_chunks_scanned": len(all_chunks), # [CẬP NHẬT] Đổi từ chunks thành all_chunks
             "plagiarized_chunks_found": len(all_matches), "matches": all_matches
         }
     except Exception as e:
@@ -171,6 +188,7 @@ async def get_scan_report_detail(
                     "chunk_index": m.chunk_index,
                     "student_text": m.query_text,
                     "is_quote": m.is_quote,
+                    "is_reference": m.is_reference, # [MỚI] Kéo cờ từ DB lên
                     "sources": []
                 }
             grouped_matches[m.chunk_index]["sources"].append({

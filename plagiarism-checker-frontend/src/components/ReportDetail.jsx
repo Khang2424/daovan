@@ -8,7 +8,9 @@ export default function ReportDetail({ isLoadingDetail, detailedReport, setActiv
   // Truyền 0 vào vì màn hình Lịch sử không có tổng số đoạn (total_chunks)
   const { 
     excludeQuotes, 
-    setExcludeQuotes, 
+    setExcludeQuotes,
+    excludeReferences,     // [MỚI] Đã lấy cờ lọc Danh mục TLTK
+    setExcludeReferences,  // [MỚI] Đã lấy hàm set cờ
     filteredMatches, 
     plagiarizedCount 
   } = useMatchFilter(detailedReport?.matches || [], 0);
@@ -37,16 +39,30 @@ export default function ReportDetail({ isLoadingDetail, detailedReport, setActiv
               <h3 className="text-lg font-bold text-gray-800">{detailedReport.report_info.file_name}</h3>
               <p className="text-sm text-gray-500 mt-1 mb-4">Ngày quét: {detailedReport.report_info.created_at}</p>
               
-              {/* Thẻ Checkbox */}
-              <label className="flex items-center gap-3 cursor-pointer">
-                  <input 
-                      type="checkbox" 
-                      className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
-                      checked={excludeQuotes}
-                      onChange={(e) => setExcludeQuotes(e.target.checked)}
-                  />
-                  <span className="text-gray-700 font-medium">Loại trừ câu trích dẫn trong ngoặc kép</span>
-              </label>
+              {/* [MỚI] Bọc 2 Checkbox trong div space-y-3 để tạo khoảng cách dọc */}
+              <div className="space-y-3">
+                  {/* Thẻ Checkbox 1 */}
+                  <label className="flex items-center gap-3 cursor-pointer">
+                      <input 
+                          type="checkbox" 
+                          className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
+                          checked={excludeQuotes}
+                          onChange={(e) => setExcludeQuotes(e.target.checked)}
+                      />
+                      <span className="text-gray-700 font-medium">Loại trừ câu trích dẫn trong ngoặc kép</span>
+                  </label>
+
+                  {/* [MỚI] Thẻ Checkbox 2: Loại trừ Danh mục tài liệu tham khảo */}
+                  <label className="flex items-center gap-3 cursor-pointer">
+                      <input 
+                          type="checkbox" 
+                          className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
+                          checked={excludeReferences}
+                          onChange={(e) => setExcludeReferences(e.target.checked)}
+                      />
+                      <span className="text-gray-700 font-medium">Loại trừ Danh mục tài liệu tham khảo</span>
+                  </label>
+              </div>
             </div>
             
             <div className="text-right">
