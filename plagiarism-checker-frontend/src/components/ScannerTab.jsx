@@ -1,14 +1,17 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react'; // [MỚI] Thêm useState
 import { UploadCloud, FileText, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import MatchDetailCard from './MatchDetailCard';
-import useMatchFilter from '../hooks/useMatchFilter'; // Nhúng Hook
+import useMatchFilter from '../hooks/useMatchFilter';
 
 export default function ScannerTab({
   selectedFile, setSelectedFile, isScanning, scanResult, setScanResult, 
   error, handleFileChange, handleScan, fileInputRef
 }) {
   
+  // [MỚI] Khai báo State quản lý chế độ quét (mặc định là hybrid)
+  const [scanMode, setScanMode] = useState("hybrid");
+
   // Lấy toàn bộ công cụ từ Hook ra dùng
   const { 
     excludeQuotes, setExcludeQuotes, excludeReferences, setExcludeReferences, filteredMatches, 
@@ -45,6 +48,23 @@ export default function ScannerTab({
             <FileText className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900">{selectedFile.name}</h3>
             <p className="text-gray-500 mt-1 mb-6">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+            
+            {/* ================================================= */}
+            {/* [MỚI] Cụm Menu chọn chế độ quét */}
+            <div className="max-w-xs mx-auto mb-6 text-left">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Chế độ phân tích:</label>
+                <select 
+                    value={scanMode} 
+                    onChange={(e) => setScanMode(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                >
+                    <option value="offline">⚡ Cơ bản (Nhanh, Offline)</option>
+                    <option value="hybrid">⚖️ Kết hợp (Cân bằng tốc độ & AI)</option>
+                    <option value="online">🧠 Chuyên sâu (100% Gemini AI)</option>
+                </select>
+            </div>
+            {/* ================================================= */}
+
             <div className="flex justify-center gap-4">
               <button 
                 onClick={() => { setSelectedFile(null); setScanResult(null); if (fileInputRef.current) fileInputRef.current.value = null; }}
@@ -52,7 +72,9 @@ export default function ScannerTab({
                 className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
               > Hủy bỏ </button>
               <button 
-                onClick={handleScan} disabled={isScanning}
+                /* [CẬP NHẬT] Truyền scanMode vào hàm handleScan khi bấm nút */
+                onClick={() => handleScan(scanMode)} 
+                disabled={isScanning}
                 className="flex items-center bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-6 rounded-lg transition-colors disabled:bg-emerald-400"
               >
                 {isScanning ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Đang xử lý...</> : 'Bắt đầu quét'}
@@ -126,7 +148,7 @@ export default function ScannerTab({
             </div>
           </div>
           
-          {/* DANH SÁCH THẺ VI PHẠM (Sử dụng filteredMatches) */}
+          {/* DANH SÁCH THẺ VI PHẠM */}
           {filteredMatches.length > 0 ? (
             <div className="space-y-6">
                 <h4 className="text-lg font-bold text-gray-800 border-b pb-2">Chi tiết các đoạn trùng lặp</h4>

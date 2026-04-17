@@ -61,15 +61,26 @@ export default function Dashboard() {
     }
   };
 
-  const handleScan = async () => {
+  const handleScan = async (scanMode) => { // [MỚI] Nhận tham số scanMode từ ScannerTab truyền lên
     if (!selectedFile) return;
     setIsScanning(true); setError('');
-    const formData = new FormData(); formData.append('file', selectedFile);
+    
+    const formData = new FormData(); 
+    formData.append('file', selectedFile);
+    formData.append('scan_mode', scanMode || 'hybrid'); // [MỚI] Nạp chế độ quét vào FormData gửi đi
+
     try {
       const token = localStorage.getItem('access_token');
-      const response = await axiosClient.post('/api/v1/scan/file', formData, { headers: { 'Content-Type': 'multipart/form-data', 'Authorization': `Bearer ${token}` } });
+      const response = await axiosClient.post('/api/v1/scan/file', formData, { 
+        headers: { 
+            'Content-Type': 'multipart/form-data', 
+            'Authorization': `Bearer ${token}` 
+        } 
+      });
       setScanResult(response.data);
-    } catch (err) { setError(err.response?.data?.detail || 'Lỗi quét file.'); } 
+    } catch (err) { 
+        setError(err.response?.data?.detail || 'Lỗi quét file.'); 
+    } 
     finally { setIsScanning(false); }
   };
 

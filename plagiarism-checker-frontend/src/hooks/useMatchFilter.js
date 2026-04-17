@@ -28,19 +28,33 @@ export default function useMatchFilter(originalMatches = [], totalChunks = 0) {
     // 2. Tính toán các con số để đưa ra Biểu đồ
     const plagiarizedCount = filteredMatches.length;
     const excludedCount = originalMatches.length - plagiarizedCount;
-    // Nếu totalChunks = 0 (bên màn hình lịch sử), ta cứ cho originalCount = 0
     const originalCount = totalChunks > 0 ? (totalChunks - originalMatches.length) : 0;
-    const plagiarizedPercent = totalChunks > 0 ? Math.round((plagiarizedCount / totalChunks) * 100) : 0;
+
+    // ====================================================================
+    // 3. [THUẬT TOÁN MỚI] TÍNH TOÁN PHẦN TRĂM ĐẠO VĂN DỰA TRÊN ĐIỂM SỐ THỰC
+    // ====================================================================
+    let totalSimilaritySum = 0;
+    
+    if (totalChunks > 0) {
+        // Duyệt qua từng đoạn văn đã bị bắt lỗi (sau khi đã đi qua bộ lọc)
+        filteredMatches.forEach(match => {
+            // Lấy điểm số cao nhất trong các nguồn của đoạn này (thường nằm ở vị trí [0])
+            const highestScore = match.sources[0]?.similarity_score || 0;
+            
+            // Cộng dồn điểm thực tế. Ví dụ: Đoạn này giống 83.6% thì cộng 0.836
+            totalSimilaritySum += highestScore; 
+        });
+    }
+
+    // Công thức: (Tổng điểm thực tế của các đoạn / Tổng số đoạn cả bài) * 100
+    // Ví dụ: (0.603 + 0.835 + 0.706 + 0.979 + 0.950) / 6 đoạn = 0.6788 -> 68%
+    const plagiarizedPercent = totalChunks > 0 
+        ? Math.round((totalSimilaritySum / totalChunks) * 100) 
+        : 0;
 
     return {
-        excludeQuotes,
-        setExcludeQuotes,
-        excludeReferences, 
-        setExcludeReferences,
-        filteredMatches,
-        plagiarizedCount,
-        excludedCount,
-        originalCount,
-        plagiarizedPercent
+        excludeQuotes, setExcludeQuotes,
+        excludeReferences, setExcludeReferences, 
+        filteredMatches, plagiarizedCount, excludedCount, originalCount, plagiarizedPercent
     };
 }
