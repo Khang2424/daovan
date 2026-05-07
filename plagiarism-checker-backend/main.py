@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine
 from models import Base
-from routers import auth_router, scan_router
+from routers import auth_router, scan_router, history_router 
 
 # Tạo bảng DB nếu chưa có
 Base.metadata.create_all(bind=engine)
@@ -12,6 +12,7 @@ app = FastAPI(
     description="Hệ thống kiểm tra đạo văn sử dụng Vector Embeddings",
     version="1.0.0"
 )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -26,6 +27,9 @@ app.add_middleware(
 # Đăng ký các Routes (APIs) từ thư mục routers
 app.include_router(auth_router.router)
 app.include_router(scan_router.router)
+
+# [MỚI] 2. Đăng ký Router lịch sử vào App
+app.include_router(history_router.router) 
 
 # API Kiểm tra trạng thái server
 @app.get("/health", tags=["System"])

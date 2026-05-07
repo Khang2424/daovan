@@ -19,7 +19,7 @@ export default function MatchDetailCard({ match, index }) {
         <div className={`px-6 py-3 border-b flex justify-between items-center ${isExactMatch ? 'bg-red-50 border-red-100' : 'bg-orange-50 border-orange-100'}`}>
             <span className={`font-bold flex items-center gap-2 ${isExactMatch ? 'text-red-700' : 'text-orange-700'}`}>
                 <AlertCircle className="w-5 h-5" />
-                Đoạn #{match.chunk_index} • {isExactMatch ? 'SAO CHÉP Y NGUYÊN' : 'ĐẠO Ý / CHỈNH SỬA TỪ'}
+                Câu #{match.chunk_index} • {isExactMatch ? 'SAO CHÉP Y NGUYÊN' : 'ĐẠO Ý / CHỈNH SỬA TỪ'}
                 {/* Hiển thị cờ báo hiệu nếu câu này nằm trong ngoặc kép */}
                 {match.is_quote && <span className="ml-2 px-2 py-0.5 bg-gray-200 text-gray-700 text-xs rounded border border-gray-300">CÓ TRÍCH DẪN</span>}
             </span>
