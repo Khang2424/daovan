@@ -42,22 +42,28 @@ def check_if_quote(text: str) -> bool:
     return False
 
 # ====================================================================
-# [MỚI] HÀM TIỀN XỬ LÝ NLP & ĐO LƯỜNG TỪ VỰNG CHỐNG VẠ LÂY
+# [MỚI] HÀM TIỀN XỬ LÝ "MẶT NẠ" (LOSSLESS PREPROCESSING) & TỪ VỰNG
 # ====================================================================
-# Cấu hình regex chuẩn hóa từ viết tắt
-ABBREV_PATTERNS = [
-    (re.compile(r'\bASP\.\s*Net\b', re.IGNORECASE), 'ASP Net'),
-    (re.compile(r'\bASP\s*\.\s*Net\b', re.IGNORECASE), 'ASP Net'),
-    (re.compile(r'\b([A-Z]{2,})\.\s+([A-Za-z0-9#]+)\b'), r'\1.\2'),
-    (re.compile(r'\b([A-Za-z])\s+#\b'), r'\1#'),
-    (re.compile(r'\b(ts|pgs|th\.s|ths|vd|gs|bs)\s*\.', re.IGNORECASE), r'\1'),
-]
 
-def normalize_abbreviations(text: str) -> str:
-    """Chuẩn hóa văn bản bằng Regex để underthesea không cắt sai dấu chấm"""
-    for pattern, replacement in ABBREV_PATTERNS:
-        text = pattern.sub(replacement, text)
+def mask_abbreviations(text: str) -> str:
+    """Tạm thời giấu dấu chấm (.) thành chuỗi _DOT_ để AI không cắt sai câu, bảo toàn 100% khoảng trắng gốc"""
+    # 1. ASP. Net (Giữ nguyên khoảng trắng trước và sau dấu chấm bằng \2 và \3)
+    text = re.sub(r'\b(ASP)(\s*)\.(\s*)(Net)\b', r'\1\2_DOT_\3\4', text, flags=re.IGNORECASE)
+    
+    # 2. Các chức danh tiếng Việt (PGS. TS.)
+    text = re.sub(r'\b(ts|pgs|ths|vd|gs|bs)(\s*)\.', r'\1\2_DOT_', text, flags=re.IGNORECASE)
+    
+    # 3. Chức danh Thạc sĩ (Th.S.) - Cần bọc 2 dấu chấm
+    text = re.sub(r'\b(th)(\s*)\.(\s*)(s)(\s*)\.', r'\1\2_DOT_\3\4\5_DOT_', text, flags=re.IGNORECASE)
+    
+    # 4. Từ viết tắt in hoa (N. X. B.)
+    text = re.sub(r'\b([A-Z])(\s*)\.', r'\1\2_DOT_', text)
+    
     return text
+
+def unmask_abbreviations(text: str) -> str:
+    """Gỡ mặt nạ, trả lại dấu chấm nguyên thủy cho văn bản"""
+    return text.replace('_DOT_', '.')
 
 def calculate_lexical_overlap(sentence: str, source_text: str) -> float:
     """Đo tỷ lệ từ vựng trùng khớp để loại bỏ lỗi 'vạ lây' do dùng context"""
@@ -105,13 +111,18 @@ async def process_document_plagiarism(file: UploadFile, scan_mode: str):
     # 1. Tách văn bản thành TỪNG CÂU ĐƠN LẺ
     main_text, ref_text = split_main_and_references(document_text)
     
-    # [SỬA LẠI] Sửa lỗi NLP thay thế lệnh replace cứng bằng hàm normalize_abbreviations
-    main_text = normalize_abbreviations(main_text)
+    # [SỬA LẠI] Đeo mặt nạ để bảo vệ dấu chấm
+    main_text = mask_abbreviations(main_text)
     if ref_text: 
-        ref_text = normalize_abbreviations(ref_text)
+        ref_text = mask_abbreviations(ref_text)
     
-    main_sentences = [s.strip() for s in sent_tokenize(main_text) if s.strip()]
-    ref_sentences = [s.strip() for s in sent_tokenize(ref_text) if s.strip()]
+    # AI cắt câu dựa trên văn bản đã mang mặt nạ (đảm bảo không đứt đoạn)
+    main_sentences_masked = [s.strip() for s in sent_tokenize(main_text) if s.strip()]
+    ref_sentences_masked = [s.strip() for s in sent_tokenize(ref_text) if s.strip()]
+    
+    # [SỬA LẠI] LẬP TỨC gỡ mặt nạ để trả lại văn bản gốc 100%
+    main_sentences = [unmask_abbreviations(s) for s in main_sentences_masked]
+    ref_sentences = [unmask_abbreviations(s) for s in ref_sentences_masked]
     
     all_sentences = main_sentences + ref_sentences
     ref_start_index = len(main_sentences)
