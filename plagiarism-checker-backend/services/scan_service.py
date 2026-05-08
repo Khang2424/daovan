@@ -42,6 +42,33 @@ def check_if_quote(text: str) -> bool:
     return False
 
 # ====================================================================
+# [MỚI] HÀM TIỀN XỬ LÝ NLP & ĐO LƯỜNG TỪ VỰNG CHỐNG VẠ LÂY
+# ====================================================================
+# Cấu hình regex chuẩn hóa từ viết tắt
+ABBREV_PATTERNS = [
+    (re.compile(r'\bASP\.\s*Net\b', re.IGNORECASE), 'ASP Net'),
+    (re.compile(r'\bASP\s*\.\s*Net\b', re.IGNORECASE), 'ASP Net'),
+    (re.compile(r'\b([A-Z]{2,})\.\s+([A-Za-z0-9#]+)\b'), r'\1.\2'),
+    (re.compile(r'\b([A-Za-z])\s+#\b'), r'\1#'),
+    (re.compile(r'\b(ts|pgs|th\.s|ths|vd|gs|bs)\s*\.', re.IGNORECASE), r'\1'),
+]
+
+def normalize_abbreviations(text: str) -> str:
+    """Chuẩn hóa văn bản bằng Regex để underthesea không cắt sai dấu chấm"""
+    for pattern, replacement in ABBREV_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+def calculate_lexical_overlap(sentence: str, source_text: str) -> float:
+    """Đo tỷ lệ từ vựng trùng khớp để loại bỏ lỗi 'vạ lây' do dùng context"""
+    s_clean = re.sub(r'[^\w\s]', '', sentence.lower())
+    db_clean = re.sub(r'[^\w\s]', '', source_text.lower())
+    s_tokens = set(s_clean.split())
+    db_tokens = set(db_clean.split())
+    if not s_tokens: return 0.0
+    return len(s_tokens.intersection(db_tokens)) / len(s_tokens)
+
+# ====================================================================
 # [MỚI] HÀM SINH NGỮ CẢNH (CHỈ LẤY TEXT, KHÔNG GỘP DATA)
 # ====================================================================
 def get_context_for_sentence(sentences: list, index: int) -> str:
@@ -78,9 +105,10 @@ async def process_document_plagiarism(file: UploadFile, scan_mode: str):
     # 1. Tách văn bản thành TỪNG CÂU ĐƠN LẺ
     main_text, ref_text = split_main_and_references(document_text)
     
-    # Sửa lỗi NLP hay cắt nhầm chữ "ASP. Net"
-    main_text = main_text.replace("ASP. Net", "ASP.Net")
-    ref_text = ref_text.replace("ASP. Net", "ASP.Net")
+    # [SỬA LẠI] Sửa lỗi NLP thay thế lệnh replace cứng bằng hàm normalize_abbreviations
+    main_text = normalize_abbreviations(main_text)
+    if ref_text: 
+        ref_text = normalize_abbreviations(ref_text)
     
     main_sentences = [s.strip() for s in sent_tokenize(main_text) if s.strip()]
     ref_sentences = [s.strip() for s in sent_tokenize(ref_text) if s.strip()]
@@ -105,19 +133,32 @@ async def process_document_plagiarism(file: UploadFile, scan_mode: str):
             
             if best_score >= 0.50:
                 source_text_from_db = best_point.payload.get("text")
-                final_score, final_match_type = round(best_score, 4), "SAFE"
+                
+                # [SỬA LẠI] RAG Giai đoạn 2: Tính tỷ lệ trùng từ vựng để bác bỏ 'vạ lây'
+                overlap_ratio = calculate_lexical_overlap(current_sentence, source_text_from_db)
+                
+                final_score = round(best_score, 4)
+                final_match_type = "SAFE"
 
                 if scan_mode == "offline":
-                    final_match_type = "EXACT_MATCH" if best_score >= 0.85 else "PARAPHRASED"
+                    # [SỬA LẠI] Đánh giá theo overlap_ratio
+                    if overlap_ratio >= 0.75:
+                        final_match_type = "EXACT_MATCH"
+                    elif overlap_ratio >= 0.30:
+                        final_match_type = "PARAPHRASED"
+                    else:
+                        final_match_type = "SAFE" # Từ chối kết quả vạ lây
                 elif scan_mode == "hybrid":
-                    if best_score >= 0.85:
+                    if overlap_ratio >= 0.80:
                         final_match_type = "EXACT_MATCH"
                     else:
-                        res = evaluate_plagiarism_with_gemini(context_text, source_text_from_db)
+                        # [SỬA LẠI] Truyền current_sentence cho Gemini thay vì context_text
+                        res = evaluate_plagiarism_with_gemini(current_sentence, source_text_from_db)
                         time.sleep(4)
                         final_match_type = res.get("match_type", "SAFE")
                 elif scan_mode == "online":
-                    res = evaluate_plagiarism_with_gemini(context_text, source_text_from_db)
+                    # [SỬA LẠI] Truyền current_sentence cho Gemini thay vì context_text
+                    res = evaluate_plagiarism_with_gemini(current_sentence, source_text_from_db)
                     time.sleep(4)
                     final_score, final_match_type = res.get("similarity_score", final_score), res.get("match_type", "SAFE")
 
