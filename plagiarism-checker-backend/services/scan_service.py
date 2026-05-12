@@ -1,7 +1,7 @@
 import io
 import re
 import time
-import PyPDF2
+import fitz  # PyMuPDF
 import docx
 from fastapi import HTTPException, UploadFile
 from sentence_transformers import SentenceTransformer
@@ -18,10 +18,13 @@ qdrant_client = QdrantClient(host="localhost", port=6333)
 async def extract_text_from_file(file: UploadFile):
     content = await file.read()
     text = ""
+    
     if file.filename.endswith(".pdf"):
-        pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
-        for page in pdf_reader.pages:
-            if page.extract_text(): text += page.extract_text() + "\n"
+        # [SỬA LẠI] Dùng PyMuPDF (fitz) để bóc tách PDF, vá lỗi nứt chữ tiếng Việt
+        doc = fitz.open(stream=content, filetype="pdf")
+        for page in doc:
+            text += page.get_text() + "\n"
+            
     elif file.filename.endswith(".docx"):
         doc = docx.Document(io.BytesIO(content))
         for para in doc.paragraphs:

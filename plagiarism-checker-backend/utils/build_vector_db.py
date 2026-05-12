@@ -1,112 +1,118 @@
 import os
-import sys
-import PyPDF2
 import uuid
+import asyncio
+import shutil
+import traceback # [MỚI] Thư viện để in chi tiết lỗi
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct, Distance, VectorParams
+from sentence_transformers import SentenceTransformer
+from underthesea import sent_tokenize
 
-# Đảm bảo script có thể nhận diện được các thư mục gốc của dự án
+import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from services.scan_service import extract_text_from_file, mask_abbreviations, unmask_abbreviations, get_context_for_sentence
 
-from sqlalchemy.orm import Session
-from database import SessionLocal, engine
-from models import SourceDocument, Base
-from services import model, qdrant_client, chunk_text_sliding_window
-from qdrant_client.models import PointStruct
-from underthesea import word_tokenize
+print("Đang tải Model AI cho Script Vector hóa...")
+MODEL_NAME = 'bkai-foundation-models/vietnamese-bi-encoder'
+model = SentenceTransformer(MODEL_NAME)
+qdrant_client = QdrantClient(host="localhost", port=6333)
+COLLECTION_NAME = "document_chunks"
 
-# Thư mục chứa 24 file đồ án của bạn
-DATA_DIR = "./data/source_docs"
+class DummyUploadFile:
+    def __init__(self, filename, content):
+        self.filename = filename
+        self.content = content
+    async def read(self):
+        return self.content
 
-def extract_text_local_pdf(file_path):
-    """Hàm chuyên dụng để đọc file PDF từ ổ cứng (không dùng UploadFile)"""
-    text = ""
-    try:
-        with open(file_path, "rb") as f:
-            pdf_reader = PyPDF2.PdfReader(f)
-            for page in pdf_reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-    except Exception as e:
-        print(f" Lỗi khi đọc file {file_path}: {e}")
-    return text.strip()
-
-def main():
-    print("=== BẮT ĐẦU CHƯƠNG TRÌNH XÂY DỰNG VECTOR DATABASE ===")
+async def process_and_vectorize_file(file_path: str, doc_id: str):
+    print(f"\n▶ Đang xử lý file: {os.path.basename(file_path)}")
     
-    # Kết nối Database
-    db = SessionLocal()
+    with open(file_path, "rb") as f:
+        file_content = f.read()
     
-    if not os.path.exists(DATA_DIR):
-        print(f"Không tìm thấy thư mục {DATA_DIR}. Vui lòng tạo và bỏ PDF vào.")
-        return
-
-    # Lọc ra danh sách các file PDF
-    files = [f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]
+    dummy_file = DummyUploadFile(file_path, file_content)
+    document_text = await extract_text_from_file(dummy_file)
     
-    if not files:
-        print("Thư mục trống. Hãy thả 24 file PDF của thầy hướng dẫn vào đây!")
-        return
+    if not document_text:
+        print(f"Bỏ qua file rỗng: {file_path}")
+        return True
 
-    print(f"Đã quét thấy {len(files)} file đồ án. Bắt đầu xử lý...\n")
+    masked_text = mask_abbreviations(document_text)
+    sentences_masked = [s.strip() for s in sent_tokenize(masked_text) if s.strip()]
+    sentences = [unmask_abbreviations(s) for s in sentences_masked]
+    
+    points = []
+    
+    for index, current_sentence in enumerate(sentences):
+        context_text = get_context_for_sentence(sentences, index)
+        vector = model.encode(context_text).tolist()
+        
+        payload = {
+            "source_doc_id": doc_id,
+            "text": current_sentence, 
+            "context_text": context_text
+        }
+        
+        point_id = str(uuid.uuid4())
+        points.append(PointStruct(id=point_id, vector=vector, payload=payload))
+        
+    if points:
+        BATCH_SIZE = 100
+        total_batches = (len(points) + BATCH_SIZE - 1) // BATCH_SIZE
+        
+        for i in range(0, len(points), BATCH_SIZE):
+            batch = points[i : i + BATCH_SIZE]
+            qdrant_client.upsert(collection_name=COLLECTION_NAME, points=batch)
+            print(f"   -> Đã đẩy lô {i//BATCH_SIZE + 1}/{total_batches} ({len(batch)} câu)...")
+            
+        print(f" => HOÀN TẤT file! Tổng cộng {len(points)} câu.")
+    return True
 
-    for file_name in files:
-        file_path = os.path.join(DATA_DIR, file_name)
-        print(f"[*] Đang xử lý: {file_name}")
-
-        # 1. LƯU THÔNG TIN VÀO POSTGRESQL TRƯỚC ĐỂ LẤY ID CHUẨN
-        # (Để tránh trùng lặp, ta có thể kiểm tra xem file này đã có trong DB chưa)
-        existing_doc = db.query(SourceDocument).filter(SourceDocument.title == file_name).first()
-        if existing_doc:
-            print(f" -> File này đã có trong Database (ID: {existing_doc.id}). Bỏ qua.\n")
-            continue
-
-        new_doc = SourceDocument(
-            title=file_name,
-            author="Khoa CNTT - ĐH Lac Hong", # Bạn có thể sửa cứng tên trường vào đây
-            file_path=file_path,
-            sync_status="INDEXED"
+async def main():
+    if not qdrant_client.collection_exists(COLLECTION_NAME):
+        print(f"Collection '{COLLECTION_NAME}' chưa tồn tại. Đang tạo mới...")
+        qdrant_client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
         )
-        db.add(new_doc)
-        db.commit()
-        db.refresh(new_doc)
-        doc_id = new_doc.id # Lấy được ID (ví dụ: 2, 3, 4...)
 
-        # 2. ĐỌC CHỮ VÀ CẮT KHÚC (SLIDING WINDOW)
-        text = extract_text_local_pdf(file_path)
-        if not text:
-            print(" -> File trống hoặc là file ảnh scan (AI không đọc được chữ). Bỏ qua.\n")
-            continue
-            
-        chunks = chunk_text_sliding_window(text, window_size=3, overlap=1)
-        
-        # 3. BIẾN THÀNH VECTOR VÀ ĐẨY VÀO QDRANT
-        points = []
-        for i, chunk in enumerate(chunks):
-            # Tách từ tiếng Việt chuẩn NLP
-            chunk_segmented = word_tokenize(chunk, format="text")
-            vector = model.encode(chunk_segmented)
-            
-            points.append(PointStruct(
-                id=str(uuid.uuid4()),
-                vector=vector.tolist(),
-                payload={
-                    "source_doc_id": doc_id, # Đánh dấu đoạn văn này thuộc về file đồ án nào
-                    "chunk_index": i,
-                    "text": chunk
-                }
-            ))
-        
-        # Lưu vào Vector DB (Qdrant)
-        if points:
-            qdrant_client.upsert(
-                collection_name="document_chunks",
-                points=points
-            )
-        
-        print(f" -> Thành công! Đã tạo {len(points)} Vectors vào Qdrant (Source ID: {doc_id})\n")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_folder = os.path.abspath(os.path.join(current_dir, "..", "data", "source_docs"))
+    
+    # [MỚI] Tự động tạo cả 2 thư mục "done" và "error"
+    done_folder = os.path.abspath(os.path.join(current_dir, "..", "data", "done"))
+    error_folder = os.path.abspath(os.path.join(current_dir, "..", "data", "error"))
+    os.makedirs(done_folder, exist_ok=True)
+    os.makedirs(error_folder, exist_ok=True)
+    
+    if not os.path.exists(data_folder):
+        print(f"Không tìm thấy thư mục {data_folder}")
+        return
 
-    print("\n=== HOÀN TẤT TOÀN BỘ QUÁ TRÌNH ===")
-    db.close()
+    files = [f for f in os.listdir(data_folder) if f.endswith(('.pdf', '.docx'))]
+    print(f"Tìm thấy {len(files)} file cần Vector hóa.")
+    
+    for filename in files:
+        file_path = os.path.join(data_folder, filename)
+        
+        # [MỚI] VÒNG BẢO VỆ TRY...EXCEPT CHỐNG CRASH HỆ THỐNG
+        try:
+            success = await process_and_vectorize_file(file_path, doc_id=filename)
+            
+            if success:
+                done_path = os.path.join(done_folder, filename)
+                shutil.move(file_path, done_path)
+                print(f" ✔ Đã chuyển {filename} sang thư mục done/")
+                
+        except Exception as e:
+            # Nếu có bất kỳ lỗi gì (Timeout, Lỗi PDF hỏng, Lỗi NLP...)
+            print(f"\n ❌ LỖI NGHIÊM TRỌNG Ở FILE {filename}: {str(e)}")
+            error_path = os.path.join(error_folder, filename)
+            shutil.move(file_path, error_path)
+            print(f" ⛑ Đã CÁCH LY file lỗi sang thư mục error/ để hệ thống chạy tiếp!")
+
+    print("\n🎉 HOÀN TẤT VECTOR HÓA TOÀN BỘ DỮ LIỆU!")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
