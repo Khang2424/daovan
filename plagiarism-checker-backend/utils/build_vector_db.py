@@ -3,6 +3,7 @@ import uuid
 import asyncio
 import shutil
 import traceback # [MỚI] Thư viện để in chi tiết lỗi
+import psycopg2 # [MỚI] Thư viện kết nối Postgres
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, Distance, VectorParams
 from sentence_transformers import SentenceTransformer
@@ -76,11 +77,19 @@ async def main():
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(size=768, distance=Distance.COSINE),
         )
+    
+    # [MỚI] THIẾT LẬP KẾT NỐI POSTGRESQL
+    # Hãy thay đổi user, password, dbname cho khớp với máy của bạn
+    db_conn = psycopg2.connect(
+        host="localhost",
+        database="daovan_logic_db", # Thay tên DB của bạn vào đây
+        user="postgres",      # Thay username của bạn
+        password="12345"   # Thay mật khẩu của bạn
+    )
+    cursor = db_conn.cursor()
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     data_folder = os.path.abspath(os.path.join(current_dir, "..", "data", "source_docs"))
-    
-    # [MỚI] Tự động tạo cả 2 thư mục "done" và "error"
     done_folder = os.path.abspath(os.path.join(current_dir, "..", "data", "done"))
     error_folder = os.path.abspath(os.path.join(current_dir, "..", "data", "error"))
     os.makedirs(done_folder, exist_ok=True)
@@ -96,9 +105,27 @@ async def main():
     for filename in files:
         file_path = os.path.join(data_folder, filename)
         
-        # [MỚI] VÒNG BẢO VỆ TRY...EXCEPT CHỐNG CRASH HỆ THỐNG
         try:
-            success = await process_and_vectorize_file(file_path, doc_id=filename)
+            # ========================================================
+            # [MỚI] LOGIC ĐỒNG BỘ INTEGER ID VỚI POSTGRESQL
+            # 1. Kiểm tra xem file đã có trong bảng source_documents chưa
+            cursor.execute("SELECT id FROM source_documents WHERE file_path = %s", (filename,))
+            row = cursor.fetchone()
+            
+            if row:
+                doc_id_int = row[0] # Nếu có rồi thì lấy ID cũ
+            else:
+                # 2. Nếu chưa có, thêm mới và lấy ID tự động tăng về
+                cursor.execute(
+                    "INSERT INTO source_documents (file_path, title) VALUES (%s, %s) RETURNING id", 
+                    (filename, filename)
+        )
+                doc_id_int = cursor.fetchone()[0]
+                db_conn.commit() # Lưu vào DB
+            # ========================================================
+
+            # GỌI HÀM VECTOR VỚI ID LÀ SỐ NGUYÊN
+            success = await process_and_vectorize_file(file_path, doc_id=doc_id_int)
             
             if success:
                 done_path = os.path.join(done_folder, filename)
@@ -106,13 +133,14 @@ async def main():
                 print(f" ✔ Đã chuyển {filename} sang thư mục done/")
                 
         except Exception as e:
-            # Nếu có bất kỳ lỗi gì (Timeout, Lỗi PDF hỏng, Lỗi NLP...)
             print(f"\n ❌ LỖI NGHIÊM TRỌNG Ở FILE {filename}: {str(e)}")
             error_path = os.path.join(error_folder, filename)
             shutil.move(file_path, error_path)
+            db_conn.rollback() # Trả lại trạng thái DB nếu có lỗi
             print(f" ⛑ Đã CÁCH LY file lỗi sang thư mục error/ để hệ thống chạy tiếp!")
 
+    cursor.close()
+    db_conn.close()
     print("\n🎉 HOÀN TẤT VECTOR HÓA TOÀN BỘ DỮ LIỆU!")
-
 if __name__ == "__main__":
     asyncio.run(main())
