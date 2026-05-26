@@ -43,7 +43,7 @@ class MatchDetail(Base):
     is_reference = Column(Boolean, default=False) # Cờ đánh dấu đoạn này nằm trong Danh mục tài liệu tham khảo
     # =========================================================
 
-    source_doc_id = Column(Integer, nullable=True)
+    source_doc_id = Column(Integer, ForeignKey("source_documents.id", ondelete="SET NULL"), nullable=True)
     query_text = Column(Text, nullable=False)
     matched_text = Column(Text, nullable=False)
     similarity_score = Column(Float, nullable=False)
