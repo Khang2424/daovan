@@ -6,7 +6,7 @@ client = QdrantClient(host="localhost", port=6333)
 COLLECTION_NAME = "document_chunks"
 
 # Thay tên file bạn muốn kiểm tra vào đây
-FILE_NAME = "11190911_NguyenDinhChung_Thietkexaydungphanmemquanlysinhvien.pdf"
+FILE_NAME = "11212229_HoangDinhHieu_XayDungHeThongChiaSeAmNhac.pdf"
 
 def verify_file_content(file_name):
     print(f"--- Đang kiểm tra dữ liệu của file: {file_name} ---")
