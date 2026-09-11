@@ -1,6 +1,48 @@
 import { useState } from 'react';
 import { AlertCircle, FileText, LayoutDashboard, Database } from 'lucide-react';
 
+// =========================================================================
+// [MỚI] HÀM BỔ TRỢ HIGHLIGHT NỘI DUNG (TURNITIN STYLE DIFFING)
+// Tách từ theo khoảng trắng, chuẩn hóa dấu câu để tìm các từ trùng khớp
+// và bao bọc các từ trùng lặp bằng thẻ <span> có màu nền nổi bật.
+// =========================================================================
+const renderHighlightedText = (targetText, referenceText, highlightClass) => {
+  if (!targetText) return null;
+  if (!referenceText) return targetText;
+
+  // Chuẩn hóa một từ: xóa dấu câu cơ bản và đưa về chữ thường để so sánh chính xác
+  const cleanWord = (w) => w.toLowerCase().replace(/^[.,\/#!$%\^&\*;:{}=\-_`~()]+|[.,\/#!$%\^&\*;:{}=\-_`~()]+$/g, '');
+
+  // Tạo tập hợp các từ xuất hiện trong văn bản đối chiếu
+  const refWords = referenceText.split(/\s+/).map(cleanWord).filter(Boolean);
+  const refWordSet = new Set(refWords);
+
+  // Tách văn bản mục tiêu thành các phần tử từ và khoảng trắng
+  const tokens = targetText.split(/(\s+)/);
+
+  return tokens.map((token, idx) => {
+    // Nếu là khoảng trắng, giữ nguyên
+    if (/^\s+$/.test(token)) {
+      return token;
+    }
+
+    const cleaned = cleanWord(token);
+    // Nếu từ xuất hiện trong văn bản tham chiếu, bôi màu nổi bật
+    if (cleaned && refWordSet.has(cleaned)) {
+      return (
+        <span
+          key={idx}
+          className={`${highlightClass} px-0.5 py-0.2 rounded font-semibold transition-colors`}
+        >
+          {token}
+        </span>
+      );
+    }
+
+    return <span key={idx}>{token}</span>;
+  });
+};
+
 export default function MatchDetailCard({ match, index }) {
   // State để quản lý xem người dùng đang click xem Nguồn số mấy (Mặc định là 0 - Nguồn giống nhất)
   const [activeSourceIndex, setActiveSourceIndex] = useState(0);
@@ -11,6 +53,16 @@ export default function MatchDetailCard({ match, index }) {
   // Dùng dữ liệu của nguồn đầu tiên (giống nhất) để làm màu sắc chủ đạo cho thẻ
   const primarySource = match.sources[0];
   const isExactMatch = primarySource.match_type === 'EXACT_MATCH';
+
+  // [MỚI] Tùy biến màu highlight dựa trên loại vi phạm:
+  // EXACT_MATCH: Nền đỏ nhạt, viền/chữ đỏ
+  // PARAPHRASED: Nền cam nhạt, viền/chữ cam đậm
+  const studentHighlightColor = isExactMatch
+    ? 'bg-red-200 text-red-900'
+    : 'bg-orange-200 text-orange-900';
+
+  // Văn bản nguồn tham chiếu dùng tông xanh lá (Emerald) để đồng bộ với theme thẻ bên phải
+  const sourceHighlightColor = 'bg-emerald-200 text-emerald-950 font-bold';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all hover:shadow-md mb-6">
@@ -37,7 +89,12 @@ export default function MatchDetailCard({ match, index }) {
                     <FileText className="w-4 h-4" /> Văn bản sinh viên
                 </p>
                 <div className="p-4 bg-gray-50 rounded-lg text-gray-800 text-sm leading-relaxed border border-gray-200 flex-1">
-                    {match.student_text}
+                    {/* [MỚI] Highlight các từ trùng lặp so với nguồn đang chọn */}
+                    {renderHighlightedText(
+                      match.student_text,
+                      activeSource?.matched_text,
+                      studentHighlightColor
+                    )}
                 </div>
             </div>
 
@@ -79,7 +136,12 @@ export default function MatchDetailCard({ match, index }) {
                     <div className="mb-2 text-xs text-emerald-600 font-medium border-b border-emerald-100 pb-2">
                         Tài liệu tham chiếu ID: {activeSource.source_doc_id}
                     </div>
-                    {activeSource.matched_text}
+                    {/* [MỚI] Highlight đối sánh ngược lại trên văn bản nguồn */}
+                    {renderHighlightedText(
+                      activeSource.matched_text,
+                      match.student_text,
+                      sourceHighlightColor
+                    )}
                 </div>
             </div>
 
