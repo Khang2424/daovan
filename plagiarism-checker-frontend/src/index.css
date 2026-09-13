@@ -1,1 +1,37 @@
 @import "tailwindcss";
+@media print {
+  /* 1. Mở khóa chiều cao và overflow cho toàn bộ các phần tử cha */
+  html, body, #root, main, div {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* 2. Ẩn các thành phần giao diện không cần in */
+  aside, 
+  button, 
+  select, 
+  input, 
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  /* 3. Đảm bảo giữ nguyên màu sắc highlight và nền */
+  body, * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 4. Giữ nguyên khối thẻ, tránh ngắt đôi giữa chừng */
+  .break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* 5. Thiết lập margin cho trang in PDF */
+  @page {
+    size: A4 portrait;
+    margin: 15mm 10mm;
+  }
+}

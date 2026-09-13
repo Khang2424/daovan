@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'; // [MỚI] Thêm useState
-import { UploadCloud, FileText, Loader2 } from 'lucide-react';
+import { UploadCloud, FileText, Loader2, Printer } from 'lucide-react'; // [MỚI] Bổ sung icon Printer
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import MatchDetailCard from './MatchDetailCard';
 import useMatchFilter from '../hooks/useMatchFilter';
@@ -50,8 +50,8 @@ export default function ScannerTab({
         <p className="text-gray-500 mt-1">Tải lên file Word hoặc PDF để hệ thống quét đạo văn</p>
       </header>
 
-      {/* KHU VỰC CHỌN FILE */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center border-dashed border-2 hover:border-emerald-400 transition-colors">
+      {/* KHU VỰC CHỌN FILE - Ẩn khi in ấn bằng no-print */}
+      <div className="no-print bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center border-dashed border-2 hover:border-emerald-400 transition-colors">
         <input 
           type="file" className="hidden" ref={fileInputRef} onChange={handleFileChange}
           onClick={(e) => (e.target.value = null)} accept=".pdf,.docx" 
@@ -112,6 +112,20 @@ export default function ScannerTab({
       {/* KẾT QUẢ & BIỂU ĐỒ */}
       {scanResult && (
         <div className="mt-8 animate-fade-in-up">
+          {/* ================================================================= */}
+          {/* [MỚI] THANH ĐIỀU HƯỚNG XUẤT BÁO CÁO (Ẩn khi in ấn qua no-print) */}
+          {/* ================================================================= */}
+          <div className="flex justify-end mb-3 no-print">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-sm transition-colors cursor-pointer"
+              title="Xuất file PDF hoặc in toàn bộ kết quả quét"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Xuất PDF / In kết quả</span>
+            </button>
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
             <div className="flex flex-col md:flex-row items-center justify-between gap-8">
                 
@@ -119,7 +133,9 @@ export default function ScannerTab({
                 <div className="flex-1">
                     <h3 className="text-xl font-bold text-gray-800 mb-2">Báo cáo kết quả quét</h3>
                     <p className="text-gray-500 mb-6">File: <span className="font-medium text-emerald-600">{scanResult.file_name}</span></p>
-                    <div className="space-y-3">
+                    
+                    {/* [CẬP NHẬT] Thêm no-print vào cụm checkbox để file in sạch đẹp */}
+                    <div className="space-y-3 no-print">
                         {/* Checkbox Loại trừ Danh mục tài liệu tham khảo */}
                         <label className="flex items-center gap-3 cursor-pointer">
                             <input 
@@ -181,8 +197,9 @@ export default function ScannerTab({
 
                     {/* ================================================================= */}
                     {/* [MỚI] THANH CÔNG CỤ BỘ LỌC NHANH & SẮP XẾP */}
+                    {/* [CẬP NHẬT] Thêm no-print để ẩn công cụ lọc khi in file PDF */}
                     {/* ================================================================= */}
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="no-print flex flex-wrap items-center gap-2">
                         {/* Nhóm nút lọc theo loại */}
                         <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs">
                             <button

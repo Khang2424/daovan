@@ -1,5 +1,5 @@
 import { useState } from 'react'; // [MỚI] Bổ sung useState để quản lý state lọc và sắp xếp
-import { ArrowLeft, Loader2, UploadCloud } from 'lucide-react';
+import { ArrowLeft, Loader2, UploadCloud, Printer } from 'lucide-react'; // [MỚI] Bổ sung Printer icon
 import MatchDetailCard from './MatchDetailCard'; 
 import useMatchFilter from '../hooks/useMatchFilter'; 
 
@@ -40,11 +40,27 @@ export default function ReportDetail({ isLoadingDetail, detailedReport, setActiv
     <div className="animate-fade-in-up">
       <header className="mb-8 flex items-center justify-between border-b pb-4">
         <div>
-          <button onClick={() => setActiveTab('history')} className="flex items-center gap-2 text-gray-500 hover:text-emerald-600 mb-2 font-medium">
+          {/* [CẬP NHẬT] Thêm no-print để ẩn nút quay lại khi xuất PDF */}
+          <button onClick={() => setActiveTab('history')} className="no-print flex items-center gap-2 text-gray-500 hover:text-emerald-600 mb-2 font-medium">
             <ArrowLeft className="w-4 h-4" /> Quay lại danh sách
           </button>
           <h2 className="text-2xl font-bold text-gray-800">Chi tiết báo cáo</h2>
         </div>
+
+        {/* ================================================================= */}
+        {/* [MỚI] NÚT XUẤT PDF / IN KẾT QUẢ */}
+        {/* Gọi trực tiếp hộp thoại in ấn của trình duyệt, ẩn khi đang in (no-print) */}
+        {/* ================================================================= */}
+        {detailedReport && (
+          <button
+            onClick={() => window.print()}
+            className="no-print flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-sm transition-colors cursor-pointer"
+            title="Xuất file PDF hoặc in kết quả báo cáo"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Xuất PDF / In kết quả</span>
+          </button>
+        )}
       </header>
 
       {isLoadingDetail ? (
@@ -59,7 +75,8 @@ export default function ReportDetail({ isLoadingDetail, detailedReport, setActiv
               <h3 className="text-lg font-bold text-gray-800">{detailedReport.report_info.file_name}</h3>
               <p className="text-sm text-gray-500 mt-1 mb-4">Ngày quét: {detailedReport.report_info.created_at}</p>
               
-              <div className="space-y-3">
+              {/* [CẬP NHẬT] Thêm no-print vào cụm checkbox lọc để bản in/PDF sạch sẽ */}
+              <div className="space-y-3 no-print">
                   <label className="flex items-center gap-3 cursor-pointer">
                       <input 
                           type="checkbox" 
@@ -89,10 +106,11 @@ export default function ReportDetail({ isLoadingDetail, detailedReport, setActiv
           </div>
 
           {/* ================================================================= */}
-          {/* [MỚI] THANH CÔNG CỤ BỘ LỌC NHANH & SẮP XẾP */}
+          {/* [CẬP NHẬT] THANH CÔNG CỤ BỘ LỌC NHANH & SẮP XẾP */}
+          {/* Thêm class no-print để không bị dính vào file PDF khi in */}
           {/* ================================================================= */}
           {filteredMatches.length > 0 && (
-            <div className="bg-white p-3 rounded-lg border border-gray-200 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div className="no-print bg-white p-3 rounded-lg border border-gray-200 flex flex-wrap items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mr-1">
                   Mức độ:
