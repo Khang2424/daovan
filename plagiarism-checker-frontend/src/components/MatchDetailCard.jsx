@@ -6,41 +6,78 @@ import { AlertCircle, FileText, LayoutDashboard, Database } from 'lucide-react';
 // Tách từ theo khoảng trắng, chuẩn hóa dấu câu để tìm các từ trùng khớp
 // và bao bọc các từ trùng lặp bằng thẻ <span> có màu nền nổi bật.
 // =========================================================================
+// =========================================================================
+// DANH SÁCH HƯ TỪ TIẾNG VIỆT PHỔ BIẾN (STOP-WORDS)
+// Tránh bôi màu vụn vặt khi các từ này xuất hiện riêng lẻ không theo cụm
+// =========================================================================
+const VIETNAMESE_STOP_WORDS = new Set([
+  'và', 'hoặc', 'của', 'là', 'các', 'những', 'được', 'bị', 'cho', 'với',
+  'từ', 'do', 'đến', 'ở', 'tại', 'trong', 'trên', 'dưới', 'về', 'theo',
+  'như', 'ra', 'vào', 'lại', 'thì', 'mà', 'này', 'đó', 'kia', 'có',
+  'đã', 'đang', 'sẽ', 'rất', 'cũng', 'chỉ', 'đều', 'qua'
+]);
+
+// =========================================================================
+// HÀM BỔ TRỢ HIGHLIGHT NỘI DUNG (TURNITIN STYLE DIFFING CẢI TIẾN)
+// Hỗ trợ lọc hư từ đứng riêng lẻ: Hư từ chỉ bôi màu khi nằm trong cụm >= 2 từ
+// =========================================================================
 const renderHighlightedText = (targetText, referenceText, highlightClass) => {
-    if (!targetText) return null;
-    if (!referenceText) return targetText;
+  if (!targetText) return null;
+  if (!referenceText) return targetText;
 
-    // Chuẩn hóa một từ: xóa dấu câu cơ bản và đưa về chữ thường để so sánh chính xác
-    const cleanWord = (w) => w.toLowerCase().replace(/^[.,\/#!$%\^&\*;:{}=\-_`~()]+|[.,\/#!$%\^&\*;:{}=\-_`~()]+$/g, '');
+  // Chuẩn hóa từ: bỏ dấu câu bao quanh, đưa về chữ thường
+  const cleanWord = (w) =>
+    w.toLowerCase().replace(/^[.,\/#!$%\^&\*;:{}=\-_`~()""“”\[\]]+|[.,\/#!$%\^&\*;:{}=\-_`~()""“”\[\]]+$/g, '');
 
-    // Tạo tập hợp các từ xuất hiện trong văn bản đối chiếu
-    const refWords = referenceText.split(/\s+/).map(cleanWord).filter(Boolean);
-    const refWordSet = new Set(refWords);
+  // Tập hợp các từ có mặt trong văn bản đối chiếu
+  const refWords = referenceText.split(/\s+/).map(cleanWord).filter(Boolean);
+  const refWordSet = new Set(refWords);
 
-    // Tách văn bản mục tiêu thành các phần tử từ và khoảng trắng
-    const tokens = targetText.split(/(\s+)/);
+  // Tách văn bản mục tiêu thành các token (giữ nguyên khoảng trắng)
+  const rawTokens = targetText.split(/(\s+)/);
 
-    return tokens.map((token, idx) => {
-        // Nếu là khoảng trắng, giữ nguyên
-        if (/^\s+$/.test(token)) {
-            return token;
-        }
+  // Mảng đánh dấu boolean: vị trí nào được phép bôi màu
+  const isMatchList = rawTokens.map((token) => {
+    if (/^\s+$/.test(token)) return false;
+    const cleaned = cleanWord(token);
+    return Boolean(cleaned && refWordSet.has(cleaned));
+  });
 
-        const cleaned = cleanWord(token);
-        // Nếu từ xuất hiện trong văn bản tham chiếu, bôi màu nổi bật
-        if (cleaned && refWordSet.has(cleaned)) {
-            return (
-                <span
-                    key={idx}
-                    className={`${highlightClass} px-0.5 py-0.2 rounded font-semibold transition-colors`}
-                >
-                    {token}
-                </span>
-            );
-        }
+  return rawTokens.map((token, idx) => {
+    // Giữ nguyên khoảng trắng
+    if (/^\s+$/.test(token)) {
+      return token;
+    }
 
+    const cleaned = cleanWord(token);
+    const isMatched = isMatchList[idx];
+
+    if (!isMatched) {
+      return <span key={idx}>{token}</span>;
+    }
+
+    // Kiểm tra điều kiện hư từ (Stop-word)
+    if (VIETNAMESE_STOP_WORDS.has(cleaned)) {
+      // Tìm token từ trước đó (bỏ qua khoảng trắng ở idx - 1)
+      const prevWordMatched = idx >= 2 ? isMatchList[idx - 2] : false;
+      // Tìm token từ tiếp theo (bỏ qua khoảng trắng ở idx + 1)
+      const nextWordMatched = idx + 2 < isMatchList.length ? isMatchList[idx + 2] : false;
+
+      // Hư từ đứng cô lập một mình giữa các từ không trùng -> không bôi màu
+      if (!prevWordMatched && !nextWordMatched) {
         return <span key={idx}>{token}</span>;
-    });
+      }
+    }
+
+    return (
+      <span
+        key={idx}
+        className={`${highlightClass} px-0.5 py-0.2 rounded font-semibold transition-colors`}
+      >
+        {token}
+      </span>
+    );
+  });
 };
 
 export default function MatchDetailCard({ match, index }) {
