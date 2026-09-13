@@ -7,6 +7,8 @@ from fastapi import HTTPException, UploadFile
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from underthesea import sent_tokenize, word_tokenize
+from sqlalchemy.orm import Session # [MỚI] Thêm type hint cho db session
+from models import SourceDocument   # [MỚI] Gọi bảng SourceDocument để truy vấn tên đồ án nguồn
 
 from services.ai_service import evaluate_plagiarism_with_gemini
 
@@ -92,22 +94,39 @@ def get_context_for_sentence(sentences: list, index: int) -> str:
     
     return sentences[index - 1] + " " + sentences[index] + " " + sentences[index + 1]
 
-def process_text_plagiarism(text: str) -> list:
+# [MỚI] Bổ sung tham số db: Session vào process_text_plagiarism
+def process_text_plagiarism(text: str, db: Session = None) -> list:
     query_vector = model.encode(word_tokenize(text, format="text"))
     search_response = qdrant_client.query_points(collection_name="document_chunks", query=query_vector.tolist(), limit=3)
     results = []
+    
+    # [MỚI] Lấy danh sách doc_ids để tra cứu tên tài liệu nguồn
+    doc_ids = list({p.payload.get("source_doc_id") for p in search_response.points if p.payload.get("source_doc_id") is not None})
+    doc_map = {}
+    if db and doc_ids:
+        docs = db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids)).all()
+        doc_map = {d.id: {"title": d.title, "file_path": d.file_path} for d in docs}
+
     for point in search_response.points:
         match_type = "EXACT_MATCH" if point.score >= 0.85 else "PARAPHRASED" if point.score >= 0.50 else "SAFE"
+        doc_id = point.payload.get("source_doc_id")
+        doc_info = doc_map.get(doc_id, {})
+
         results.append({
-            "source_doc_id": point.payload.get("source_doc_id"), "matched_text": point.payload.get("text"),
-            "similarity_score": round(point.score, 4), "match_type": match_type
+            "source_doc_id": doc_id, 
+            "source_title": doc_info.get("title") or f"Tài liệu #{doc_id}", # [MỚI] Bổ sung title
+            "source_file_path": doc_info.get("file_path"),                  # [MỚI] Bổ sung file_path
+            "matched_text": point.payload.get("text"),
+            "similarity_score": round(point.score, 4), 
+            "match_type": match_type
         })
     return results
 
 # ====================================================================
 # HÀM XỬ LÝ CHÍNH (THE CENTER-SENTENCE ARCHITECTURE)
 # ====================================================================
-async def process_document_plagiarism(file: UploadFile, scan_mode: str):
+# [MỚI] Bổ sung tham số db: Session để query tên đồ án nguồn từ Postgres
+async def process_document_plagiarism(file: UploadFile, scan_mode: str, db: Session = None):
     document_text = await extract_text_from_file(file)
     if not document_text: raise ValueError("File trống")
 
@@ -190,6 +209,29 @@ async def process_document_plagiarism(file: UploadFile, scan_mode: str):
                             "match_type": final_match_type
                         }]
                     })
+
+    # ====================================================================
+    # [MỚI] TRA CỨU TÊN ĐỒ ÁN NGUỒN TỪ POSTGRESQL (GẮN TITLE & FILE_PATH)
+    # Gom toàn bộ source_doc_id lại và query 1 lượt để tối ưu hiệu năng
+    # ====================================================================
+    if db and all_matches:
+        all_doc_ids = set()
+        for item in all_matches:
+            for s in item.get("sources", []):
+                if s.get("source_doc_id") is not None:
+                    all_doc_ids.add(s["source_doc_id"])
+        
+        if all_doc_ids:
+            docs = db.query(SourceDocument).filter(SourceDocument.id.in_(list(all_doc_ids))).all()
+            doc_map = {d.id: {"title": d.title, "file_path": d.file_path} for d in docs}
+            
+            # Gắn source_title và source_file_path vào từng nguồn
+            for item in all_matches:
+                for s in item.get("sources", []):
+                    doc_id = s.get("source_doc_id")
+                    info = doc_map.get(doc_id, {})
+                    s["source_title"] = info.get("title") or f"Tài liệu #{doc_id}"
+                    s["source_file_path"] = info.get("file_path") or ""
 
     # Không cần bộ lọc difflib hay thuật toán dọn rác nào nữa!
     return len(all_sentences), all_matches

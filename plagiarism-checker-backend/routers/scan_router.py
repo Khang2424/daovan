@@ -13,10 +13,14 @@ from crud.crud_report import create_scan_report
 router = APIRouter(prefix="/api/v1/scan", tags=["Scanner"])
 
 @router.post("/text")
-async def scan_plagiarism_text_api(request: ScanRequest, current_user: User = Depends(get_current_user)):
+async def scan_plagiarism_text_api(
+    request: ScanRequest, 
+    db: Session = Depends(get_db), # [MỚI] Bổ sung db session để tra cứu tên tài liệu nguồn
+    current_user: User = Depends(get_current_user)
+):
     try:
-        # Giao cho Lớp Não bộ xử lý
-        results = process_text_plagiarism(request.text)
+        # Giao cho Lớp Não bộ xử lý (Truyền thêm db để gắn tên tài liệu nguồn)
+        results = process_text_plagiarism(request.text, db)
         return {"status": "success", "user_email": current_user.email, "query_text": request.text, "matches": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
@@ -30,7 +34,8 @@ async def scan_file_plagiarism_api(
 ):
     try:
         # 1. Giao cho Não bộ xử lý (Cắt text, chấm AI, gộp đoạn)
-        total_chunks, all_matches = await process_document_plagiarism(file, scan_mode)
+        # [MỚI] Truyền thêm db session vào để hàm tự động tra cứu title/file_path từ PostgreSQL
+        total_chunks, all_matches = await process_document_plagiarism(file, scan_mode, db)
 
         # 2. Giao cho Thủ kho lưu trữ Database
         new_report = create_scan_report(db, current_user.id, file.filename, total_chunks, all_matches)
