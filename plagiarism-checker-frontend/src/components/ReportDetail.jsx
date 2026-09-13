@@ -1,3 +1,4 @@
+import { useState } from 'react'; // [MỚI] Bổ sung useState để quản lý state lọc và sắp xếp
 import { ArrowLeft, Loader2, UploadCloud } from 'lucide-react';
 import MatchDetailCard from './MatchDetailCard'; 
 import useMatchFilter from '../hooks/useMatchFilter'; 
@@ -9,6 +10,31 @@ export default function ReportDetail({ isLoadingDetail, detailedReport, setActiv
     excludeReferences, setExcludeReferences,
     filteredMatches, plagiarizedCount 
   } = useMatchFilter(detailedReport?.matches || [], 0);
+
+  // =========================================================================
+  // [MỚI] STATE BỘ LỌC NHANH & SẮP XẾP
+  // =========================================================================
+  const [matchTypeFilter, setMatchTypeFilter] = useState('ALL'); // 'ALL' | 'EXACT' | 'PARAPHRASE'
+  const [sortBy, setSortBy] = useState('index_asc'); // 'index_asc' | 'score_desc'
+
+  // =========================================================================
+  // [MỚI] TÍNH TOÁN DANH SÁCH HIỂN THỊ DỰA TRÊN BỘ LỌC NHANH
+  // =========================================================================
+  const displayMatches = [...filteredMatches]
+    .filter((m) => {
+      const primaryType = m.sources?.[0]?.match_type;
+      if (matchTypeFilter === 'EXACT') return primaryType === 'EXACT_MATCH';
+      if (matchTypeFilter === 'PARAPHRASE') return primaryType === 'PARAPHRASED';
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'score_desc') {
+        const scoreA = a.sources?.[0]?.similarity_score || 0;
+        const scoreB = b.sources?.[0]?.similarity_score || 0;
+        return scoreB - scoreA;
+      }
+      return (a.chunk_index || 0) - (b.chunk_index || 0);
+    });
 
   return (
     <div className="animate-fade-in-up">
@@ -62,11 +88,75 @@ export default function ReportDetail({ isLoadingDetail, detailedReport, setActiv
             </div>
           </div>
 
-          {/* DÙNG TRỰC TIẾP filteredMatches, KHÔNG CẦN QUA BỘ LỌC CẮT CHỮ NÀO NỮA */}
+          {/* ================================================================= */}
+          {/* [MỚI] THANH CÔNG CỤ BỘ LỌC NHANH & SẮP XẾP */}
+          {/* ================================================================= */}
+          {filteredMatches.length > 0 && (
+            <div className="bg-white p-3 rounded-lg border border-gray-200 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mr-1">
+                  Mức độ:
+                </span>
+                <button
+                  onClick={() => setMatchTypeFilter('ALL')}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    matchTypeFilter === 'ALL'
+                      ? 'bg-gray-800 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Tất cả ({filteredMatches.length})
+                </button>
+                <button
+                  onClick={() => setMatchTypeFilter('EXACT')}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    matchTypeFilter === 'EXACT'
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'bg-red-50 text-red-700 hover:bg-red-100'
+                  }`}
+                >
+                  Sao chép y nguyên
+                </button>
+                <button
+                  onClick={() => setMatchTypeFilter('PARAPHRASE')}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    matchTypeFilter === 'PARAPHRASE'
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+                  }`}
+                >
+                  Đạo ý / Sửa từ
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label htmlFor="sort-detail-select" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Sắp xếp:
+                </label>
+                <select
+                  id="sort-detail-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="index_asc">Thứ tự câu trong bài</option>
+                  <option value="score_desc">% Trùng lặp (Cao nhất trước)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* DÙNG displayMatches ĐÃ ĐƯỢC LỌC VÀ SẮP XẾP */}
           {filteredMatches.length > 0 ? (
-            filteredMatches.map((match, index) => (
-               <MatchDetailCard key={index} match={match} index={index} />
-            ))
+            displayMatches.length > 0 ? (
+              displayMatches.map((match, index) => (
+                 <MatchDetailCard key={match.chunk_index || index} match={match} index={index} />
+              ))
+            ) : (
+              <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                Không có đoạn trùng lặp nào thuộc phân loại đã chọn.
+              </div>
+            )
           ) : (
             <div className="bg-emerald-50 text-emerald-700 p-8 rounded-xl text-center">
               <UploadCloud className="w-8 h-8 mx-auto mb-4" />

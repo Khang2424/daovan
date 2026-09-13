@@ -9,14 +9,39 @@ export default function ScannerTab({
   error, handleFileChange, handleScan, fileInputRef
 }) {
   
-  // [MỚI] Khai báo State quản lý chế độ quét (mặc định là hybrid)
-  const [scanMode, setScanMode] = useState("hybrid");
+  // [MỚI] Khai báo State quản lý chế độ quét (mặc định là offline)
+  const [scanMode, setScanMode] = useState("offline");
+
+  // =========================================================================
+  // [MỚI] STATE BỘ LỌC NHANH & SẮP XẾP
+  // =========================================================================
+  const [matchTypeFilter, setMatchTypeFilter] = useState('ALL'); // 'ALL' | 'EXACT' | 'PARAPHRASE'
+  const [sortBy, setSortBy] = useState('index_asc'); // 'index_asc' | 'score_desc'
 
   // Lấy toàn bộ công cụ từ Hook ra dùng
   const { 
     excludeQuotes, setExcludeQuotes, excludeReferences, setExcludeReferences, filteredMatches, 
     plagiarizedCount, excludedCount, originalCount, plagiarizedPercent 
   } = useMatchFilter(scanResult?.matches || [], scanResult?.total_chunks_scanned || 0);
+
+  // =========================================================================
+  // [MỚI] TÍNH TOÁN DANH SÁCH HIỂN THỊ DỰA TRÊN BỘ LỌC NHANH
+  // =========================================================================
+  const displayMatches = [...filteredMatches]
+    .filter((m) => {
+      const primaryType = m.sources?.[0]?.match_type;
+      if (matchTypeFilter === 'EXACT') return primaryType === 'EXACT_MATCH';
+      if (matchTypeFilter === 'PARAPHRASE') return primaryType === 'PARAPHRASED';
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'score_desc') {
+        const scoreA = a.sources?.[0]?.similarity_score || 0;
+        const scoreB = b.sources?.[0]?.similarity_score || 0;
+        return scoreB - scoreA;
+      }
+      return (a.chunk_index || 0) - (b.chunk_index || 0);
+    });
 
   return (
     <div className="animate-fade-in-up">
@@ -151,10 +176,69 @@ export default function ScannerTab({
           {/* DANH SÁCH THẺ VI PHẠM */}
           {filteredMatches.length > 0 ? (
             <div className="space-y-6">
-                <h4 className="text-lg font-bold text-gray-800 border-b pb-2">Chi tiết các đoạn trùng lặp</h4>
-                {filteredMatches.map((match, index) => (
-                    <MatchDetailCard key={index} match={match} index={index} />
-                ))}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-3">
+                    <h4 className="text-lg font-bold text-gray-800">Chi tiết các đoạn trùng lặp</h4>
+
+                    {/* ================================================================= */}
+                    {/* [MỚI] THANH CÔNG CỤ BỘ LỌC NHANH & SẮP XẾP */}
+                    {/* ================================================================= */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Nhóm nút lọc theo loại */}
+                        <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs">
+                            <button
+                                onClick={() => setMatchTypeFilter('ALL')}
+                                className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                                    matchTypeFilter === 'ALL'
+                                        ? 'bg-white text-gray-800 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                            >
+                                Tất cả ({filteredMatches.length})
+                            </button>
+                            <button
+                                onClick={() => setMatchTypeFilter('EXACT')}
+                                className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                                    matchTypeFilter === 'EXACT'
+                                        ? 'bg-red-600 text-white shadow-sm'
+                                        : 'text-red-700 hover:bg-red-50'
+                                }`}
+                            >
+                                Y nguyên
+                            </button>
+                            <button
+                                onClick={() => setMatchTypeFilter('PARAPHRASE')}
+                                className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                                    matchTypeFilter === 'PARAPHRASE'
+                                        ? 'bg-orange-500 text-white shadow-sm'
+                                        : 'text-orange-700 hover:bg-orange-50'
+                                }`}
+                            >
+                                Đạo ý
+                            </button>
+                        </div>
+
+                        {/* Menu chọn sắp xếp */}
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            className="bg-white border border-gray-200 text-gray-700 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                            <option value="index_asc">Thứ tự câu</option>
+                            <option value="score_desc">% Trùng lặp cao</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* HIỂN THỊ DANH SÁCH THẺ ĐÃ QUA LỌC */}
+                {displayMatches.length > 0 ? (
+                    displayMatches.map((match, index) => (
+                        <MatchDetailCard key={match.chunk_index || index} match={match} index={index} />
+                    ))
+                ) : (
+                    <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                        Không có đoạn trùng lặp nào thuộc phân loại đã chọn.
+                    </div>
+                )}
             </div>
           ) : (
             <div className="bg-emerald-50 text-emerald-700 p-8 rounded-xl text-center shadow-sm">
