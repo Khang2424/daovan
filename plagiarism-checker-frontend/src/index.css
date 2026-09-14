@@ -1,13 +1,22 @@
 @import "tailwindcss";
+
 @media print {
-  /* 1. Mở khóa chiều cao và overflow cho toàn bộ các phần tử cha */
-  html, body, #root, main, div {
+  /* 1. Thiết lập khổ giấy A4 chuẩn và căn lề */
+  @page {
+    size: A4 portrait;
+    margin: 15mm 15mm;
+  }
+
+  /* 2. Mở khóa toàn bộ layout, ép nền trắng chữ đen chuẩn tài liệu in */
+  html, body, #root, main {
     overflow: visible !important;
     height: auto !important;
     min-height: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 
-  /* 2. Ẩn các thành phần giao diện không cần in */
+  /* 3. Ẩn các thành phần giao diện không cần thiết trên bản in */
   aside, 
   button, 
   select, 
@@ -17,21 +26,23 @@
     display: none !important;
   }
 
-  /* 3. Đảm bảo giữ nguyên màu sắc highlight và nền */
+  /* 4. Giữ nguyên 100% màu sắc chữ, viền và màu nền highlight */
   body, * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* 4. Giữ nguyên khối thẻ, tránh ngắt đôi giữa chừng */
+  /* 5. Tiện ích ngắt trang thông minh */
+  /* Ép phần tử này luôn bắt đầu ở đầu một trang giấy mới */
+  .page-break-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Giữ nguyên khối thẻ câu vi phạm, chống bị xé đôi giữa hai trang */
+  .avoid-break,
   .break-inside-avoid {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
-  }
-
-  /* 5. Thiết lập margin cho trang in PDF */
-  @page {
-    size: A4 portrait;
-    margin: 15mm 10mm;
   }
 }
