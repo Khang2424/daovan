@@ -1,8 +1,8 @@
 import { useState } from 'react';
 
 export default function useMatchFilter(originalMatches = [], totalChunks = 0) {
-    const [excludeQuotes, setExcludeQuotes] = useState(false);
-    const [excludeReferences, setExcludeReferences] = useState(false);
+    const [excludeQuotes, setExcludeQuotes] = useState(true);
+    const [excludeReferences, setExcludeReferences] = useState(true);
 
     // 1. Lọc mảng vi phạm
     const filteredMatches = originalMatches.filter(match => {

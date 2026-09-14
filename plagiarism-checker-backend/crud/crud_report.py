@@ -1,7 +1,8 @@
 import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from models import ScanReport, MatchDetail
+# [CẬP NHẬT] Thêm SourceDocument để JOIN lấy tên tài liệu tham chiếu
+from models import ScanReport, MatchDetail, SourceDocument
 
 def create_scan_report(db: Session, user_id: str, file_name: str, total_chunks: int, all_matches: list):
     """Lưu kết quả quét tổng thể và chi tiết từng đoạn văn vào Database"""
@@ -32,8 +33,28 @@ def get_user_history(db: Session, user_id: str):
     return db.query(ScanReport).filter(ScanReport.user_id == user_id).order_by(desc(ScanReport.created_at)).all()
 
 def get_report_detail(db: Session, report_id: str, user_id: str):
-    """Lấy chi tiết một bài quét"""
+    """Lấy chi tiết một bài quét kèm tên tài liệu nguồn"""
     report = db.query(ScanReport).filter(ScanReport.id == report_id, ScanReport.user_id == user_id).first()
     if not report: return None, None
-    matches = db.query(MatchDetail).filter(MatchDetail.report_id == report_id).all()
+
+    # [CẬP NHẬT] JOIN với SourceDocument để lấy thông tin title và file_path thay vì chỉ lấy ID thô
+    results = (
+        db.query(
+            MatchDetail,
+            SourceDocument.title.label("source_title"),
+            SourceDocument.file_path.label("source_file_path")
+        )
+        .outerjoin(SourceDocument, MatchDetail.source_doc_id == SourceDocument.id)
+        .filter(MatchDetail.report_id == report_id)
+        .order_by(MatchDetail.chunk_index.asc())
+        .all()
+    )
+
+    # Gắn thêm thuộc tính source_title và source_file_path vào từng bản ghi MatchDetail
+    matches = []
+    for detail, source_title, source_file_path in results:
+        detail.source_title = source_title or f"Tài liệu #{detail.source_doc_id}"
+        detail.source_file_path = source_file_path or ""
+        matches.append(detail)
+
     return report, matches

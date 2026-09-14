@@ -61,8 +61,12 @@ async def get_scan_report_detail_api(
                     "is_reference": m.is_reference,
                     "sources": []
                 }
+            
+            # [CẬP NHẬT] Đóng gói thêm source_title và source_file_path để FE hiển thị tên tài liệu gốc
             grouped_matches[m.chunk_index]["sources"].append({
                 "source_doc_id": m.source_doc_id,
+                "source_title": getattr(m, "source_title", f"Tài liệu #{m.source_doc_id}"),
+                "source_file_path": getattr(m, "source_file_path", ""),
                 "matched_text": m.matched_text,
                 "similarity_score": m.similarity_score,
                 "match_type": m.match_type
@@ -72,13 +76,18 @@ async def get_scan_report_detail_api(
         match_list = list(grouped_matches.values())
         match_list.sort(key=lambda x: x["chunk_index"])
 
+        # [CẬP NHẬT] Lấy tổng số phân đoạn đã quét (fallback sang số thẻ nếu trường trong model chưa có dữ liệu)
+        total_chunks = getattr(report, "total_chunks_scanned", None) or len(match_list)
+
         # 3. Trả về cho Frontend
         return {
             "status": "success",
             "report_info": {
                 "report_id": str(report.id),
+                "id": str(report.id), # [CẬP NHẬT] Đồng bộ key id cho cả PrintReportView và ReportDetail
                 "file_name": report.submitted_file_name,
                 "status": report.status,
+                "total_chunks_scanned": total_chunks, # [CẬP NHẬT] Truyền tổng phân đoạn để tính tỷ lệ %
                 "total_similarity_score": report.total_similarity_score,
                 "created_at": report.created_at.strftime("%Y-%m-%d %H:%M:%S") if report.created_at else None
             },
