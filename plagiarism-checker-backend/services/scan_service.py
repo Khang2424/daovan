@@ -3,11 +3,12 @@ import re
 import time
 import fitz  # PyMuPDF
 import docx
+import numpy as np  # [MỚI - VECTOR BIAS] Thêm numpy để tính toán trọng số vector và chuẩn hóa L2 norm
 from fastapi import HTTPException, UploadFile
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from underthesea import sent_tokenize, word_tokenize
-from sqlalchemy.orm import Session # [MỚI] Thêm type hint cho db session
+from sqlalchemy.orm import Session  # [MỚI] Thêm type hint cho db session
 from models import SourceDocument   # [MỚI] Gọi bảng SourceDocument để truy vấn tên đồ án nguồn
 
 from services.ai_service import evaluate_plagiarism_with_gemini
@@ -83,7 +84,7 @@ def calculate_lexical_overlap(sentence: str, source_text: str) -> float:
 # [MỚI] HÀM SINH NGỮ CẢNH (CHỈ LẤY TEXT, KHÔNG GỘP DATA)
 # ====================================================================
 def get_context_for_sentence(sentences: list, index: int) -> str:
-    """Tạo cửa sổ ngữ cảnh bao quanh câu trọng tâm i"""
+    """Tạo cửa sổ ngữ cảnh bao quanh câu trọng tâm i (Dùng dự phòng hoặc đối soát text)"""
     n = len(sentences)
     if n == 1:
         return sentences[0]
@@ -123,7 +124,7 @@ def process_text_plagiarism(text: str, db: Session = None) -> list:
     return results
 
 # ====================================================================
-# HÀM XỬ LÝ CHÍNH (THE CENTER-SENTENCE ARCHITECTURE)
+# HÀM XỬ LÝ CHÍNH (THE CENTER-SENTENCE ARCHITECTURE & VECTOR BIASING)
 # ====================================================================
 # [MỚI] Bổ sung tham số db: Session để query tên đồ án nguồn từ Postgres
 async def process_document_plagiarism(file: UploadFile, scan_mode: str, db: Session = None):
@@ -151,24 +152,65 @@ async def process_document_plagiarism(file: UploadFile, scan_mode: str, db: Sess
 
     all_matches = []
     
+    # [MỚI - VECTOR BIAS] Mã hóa hàng loạt (Batch Encode) toàn bộ câu đơn lẻ một lần để tối ưu tốc độ
+    tokenized_sentences = [word_tokenize(s, format="text") for s in all_sentences]
+    sentence_vectors = model.encode(tokenized_sentences, convert_to_numpy=True)
+    num_sentences = len(all_sentences)
+
+    # Cấu hình trọng số thiên vị ngữ cảnh (70% câu trọng tâm, 15% câu trước, 15% câu sau)
+    w_center = 0.70
+    w_neighbor = 0.15
+
     # 2. Vòng lặp quét TỪNG CÂU TRỌNG TÂM
     for index, current_sentence in enumerate(all_sentences):
         
-        # Tạo cục Text có chứa ngữ cảnh để đưa cho AI đọc hiểu
-        context_text = get_context_for_sentence(all_sentences, index)
+        # [MỚI - VECTOR BIAS] Tính toán vector trung bình có trọng số thiên vị trên không gian vector
+        v_curr = sentence_vectors[index]
+        v_prev = sentence_vectors[index - 1] if index > 0 else v_curr
+        v_next = sentence_vectors[index + 1] if index < num_sentences - 1 else v_curr
         
-        query_vector = model.encode(word_tokenize(context_text, format="text"))
-        search_response = qdrant_client.query_points(collection_name="document_chunks", query=query_vector.tolist(), limit=1)
+        # Kết hợp vector: giữ nguyên từ khóa ngữ nghĩa câu chính, mượn một phần ngữ cảnh liền kề
+        combined_vector = (w_neighbor * v_prev) + (w_center * v_curr) + (w_neighbor * v_next)
+        
+        # Chuẩn hóa L2 norm bắt buộc để bảo toàn tính toán khoảng cách Cosine Similarity
+        norm = np.linalg.norm(combined_vector)
+        query_vector = (combined_vector / norm) if norm > 0 else combined_vector
+
+        # [SỬA LẠI] Nâng limit=3 để tránh trôi ứng viên tốt nhất khi gặp câu chắp vá
+        search_response = qdrant_client.query_points(
+            collection_name="document_chunks", 
+            query=query_vector.tolist(), 
+            limit=3
+        )
 
         if search_response.points:
-            best_point = search_response.points[0]
-            best_score = best_point.score
-            
-            if best_score >= 0.50:
-                source_text_from_db = best_point.payload.get("text")
-                
-                # [SỬA LẠI] RAG Giai đoạn 2: Tính tỷ lệ trùng từ vựng để bác bỏ 'vạ lây'
-                overlap_ratio = calculate_lexical_overlap(current_sentence, source_text_from_db)
+            # [MỚI - VECTOR BIAS] Duyệt Top-K ứng viên để tìm điểm khớp từ vựng cao nhất
+            best_point = None
+            best_score = 0.0
+            best_overlap = -1.0
+            best_source_text = ""
+
+            for point in search_response.points:
+                # Ngưỡng cosine sơ bộ cho ứng viên
+                if point.score >= 0.45:
+                    candidate_text = point.payload.get("text", "")
+                    overlap = calculate_lexical_overlap(current_sentence, candidate_text)
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_point = point
+                        best_score = point.score
+                        best_source_text = candidate_text
+
+            # Nếu không tìm thấy ứng viên nào vượt trội qua overlap, lấy ứng viên có cosine cao nhất
+            if not best_point and search_response.points[0].score >= 0.50:
+                best_point = search_response.points[0]
+                best_score = best_point.score
+                best_source_text = best_point.payload.get("text", "")
+                best_overlap = calculate_lexical_overlap(current_sentence, best_source_text)
+
+            if best_point and best_score >= 0.45:
+                source_text_from_db = best_source_text
+                overlap_ratio = best_overlap
                 
                 final_score = round(best_score, 4)
                 final_match_type = "SAFE"
